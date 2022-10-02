@@ -1,6 +1,4 @@
 import os
-from venv import create
-import numpy as np
 import cv2
 
 def segmentImage(frame):
@@ -11,6 +9,7 @@ def segmentImage(frame):
     #Definção de valores de limiarização para uma certa cor que será igual próxima da cor da vassoura
     color1 = (60, 60, 55)
     color2 = (105, 255, 255)
+
     lowThreshold = color1
     highThreshold = color2
 
@@ -44,18 +43,20 @@ def getEachColorChannel(image):
 def thickenSaber(image):
     structuringElement = cv2.getStructuringElement(cv2.MORPH_CROSS, (3,3))
     
-    #Colocar só isso engrossa demais o sabre
-    #faz-se necessário erodir a imagem para que o sabre não fique muito grosso
+    #Engrossa o sabre
     img = cv2.dilate(image, structuringElement, iterations = 2)
 
-    # img = cv2.erode(image, structuringElement, iterations = 1)
-    
     return img
 
 def glowSaber(image):
     for i in range(5): 
+        #Borra a imagem
         blurryImage = cv2.GaussianBlur(image, (37,  37), 0)
+        #Engrossa o sabre
         thickenBlurryImage = thickenSaber(blurryImage)
+
+        #Em cada canal faz a operação de subtração da imagem borrada e engrossada com a imagem original
+        #Essa operação traz um aspecto neon ao sabre
         finalImage[:,:,0] = cv2.add(blueChannel, cv2.subtract(thickenBlurryImage, 40))  # B = 255 - 40 = 215
         finalImage[:,:,1] = cv2.add(greenChannel, cv2.subtract(thickenBlurryImage, 150)) # G = 255 - 150 = 105
         finalImage[:,:,2] = cv2.add(redChannel, cv2.subtract(thickenBlurryImage, 80))  # R = 255 - 80 = 175
@@ -79,9 +80,11 @@ def growingSaber(image, imageToCompare, iterations):
 def searchInitialSaberPoint(image):
     img = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-    #Definção de valores de limiarização para uma certa cor que será igual próxima da cor da vassoura,
+    #Definção de valores de limiarização para uma certa cor que será igual a cor do ponto inicial
+    #de onde irá surgir o sabre de luz
     color1 = (170, 32, 120)
     color2 = (359, 255, 255)
+
     lowThreshold = color1
     highThreshold = color2
 
@@ -96,14 +99,12 @@ def searchInitialSaberPoint(image):
 
 def initialPointWithCompleteSaber(initialPoint, saberImage):
     mask = saberImage.copy()
+
+    #Junta a imagem do ponto inicial do sabre de luz com a imagem do sabre de luz completo
+    #Com essa junção é possível criar o sabre inteiro a partir do ponto inicial
     newImage = cv2.bitwise_or(initialPoint, saberImage, mask)
 
     return newImage
-
-video = cv2.VideoCapture('saberVideo.mp4')
-
-frames = []
-count = 0
 
 def createDirectories():
     if not os.path.exists('segmentedImages'):
@@ -141,41 +142,32 @@ def createDirectories():
 
 createDirectories()
 
-# frame_width = int(video.get(3))
-# frame_height = int(video.get(4))
+video = cv2.VideoCapture('saberVideo.mp4')
 
-# out = cv2.VideoWriter('outpy.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 30, (frame_width,frame_height))
+frame_width = int(video.get(3))
+frame_height = int(video.get(4))
+
+out = cv2.VideoWriter('outpy.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 30, (frame_width,frame_height))
+
+saveInFiles = False
+count = 0
 
 while True:
     ret, frame = video.read()
     if ret:
-        
         frame = cv2.flip(frame, 0)
-        cv2.imwrite(os.path.join("frameImages", f"frame{count}.jpg"), frame)
 
         segmentInitialPoint = searchInitialSaberPoint(frame)
-        cv2.imwrite(os.path.join("initialPointImages", f"segmented{count}.jpg"), segmentInitialPoint)
 
         segmentedImage = segmentImage(frame)
-        cv2.imwrite(os.path.join("segmentedImages", f"frame{count}.jpg"), segmentedImage) 
 
         segmentInitialPointWithCompleteSaber = initialPointWithCompleteSaber(segmentInitialPoint, segmentedImage)
-        cv2.imwrite(os.path.join("initialPointWithCompleteSaberImages", f"segmented{count}.jpg"), segmentInitialPointWithCompleteSaber)
 
         growingSaberImages = growingSaber(segmentInitialPoint, segmentInitialPointWithCompleteSaber, count)
-        cv2.imwrite(os.path.join("growingSaberImages", f"frame{count}.jpg"), growingSaberImages)
-
-        # reducedNoiseImage = reduceNoise(segmentedImage)
-        # cv2.imwrite(os.path.join("reduceNoiseImages", f"frame{count}.jpg"), reducedNoiseImage)
-
-        # imageWithoutSaber = removeSaber(segmentedImage)
-        # cv2.imwrite(os.path.join("withoutSaberImages", f"frame{count}.jpg"), imageWithoutSaber)
 
         imageWithTchikenSaber = thickenSaber(growingSaberImages)
-        cv2.imwrite(os.path.join("thickenSaberImages", f"frame{count}.jpg"), imageWithTchikenSaber)
 
         blueChannel, greenChannel, redChannel = getEachColorChannel(frame)
-        cv2.imwrite(os.path.join("everyChannelImages", f"frame{count}_redChannel.jpg"), redChannel)
 
         finalImage = frame
 
@@ -187,17 +179,20 @@ while True:
         finalImage[:,:,1] = cv2.add(greenChannel, imageWithTchikenSaber)
         finalImage[:,:,2] = cv2.add(redChannel, imageWithTchikenSaber)
 
-        cv2.imwrite(os.path.join("finalResultImages", f"frame{count}.jpg"), finalImage)
+        finalImage2 = glowSaber(imageWithTchikenSaber)
 
-        # saberGrowing = growingSaber(imageWithoutSaber, reducedNoiseImage)
-        # cv2.imwrite(os.path.join("growingSaberImages", f"frame{count}.jpg"), saberGrowing)
+        out.write(finalImage2)
 
-        finalImage = glowSaber(imageWithTchikenSaber)
-
-        cv2.imwrite(os.path.join("finalResultImages2", f"frame{count}.jpg"), finalImage)
-
-        if count > 10:
-            break
+        if saveInFiles and count < 4:
+            cv2.imwrite(os.path.join("frameImages", f"frame{count}.jpg"), frame)
+            cv2.imwrite(os.path.join("initialPointImages", f"segmented{count}.jpg"), segmentInitialPoint)
+            cv2.imwrite(os.path.join("segmentedImages", f"frame{count}.jpg"), segmentedImage) 
+            cv2.imwrite(os.path.join("initialPointWithCompleteSaberImages", f"segmented{count}.jpg"), segmentInitialPointWithCompleteSaber)
+            cv2.imwrite(os.path.join("growingSaberImages", f"frame{count}.jpg"), growingSaberImages)
+            cv2.imwrite(os.path.join("thickenSaberImages", f"frame{count}.jpg"), imageWithTchikenSaber)
+            cv2.imwrite(os.path.join("everyChannelImages", f"frame{count}_redChannel.jpg"), redChannel)
+            cv2.imwrite(os.path.join("finalResultImages", f"frame{count}.jpg"), finalImage)
+            cv2.imwrite(os.path.join("finalResultImages2", f"frame{count}.jpg"), finalImage2)
 
         count += 1
     else:
