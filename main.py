@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import cv2
 
 def segmentImage(frame):
@@ -63,7 +64,7 @@ def glowSaber(image):
 
     return finalImage
 
-def growingSaber(image, imageToCompare, iterations):
+def growingSaber(image, imageToCompare, iterations, iterationsIncrement=2):
     #Definição de um elemento estruturante para remoção de ruídos
     #De acordo com a documentação do cv2 o elemento estruturante MORPH_CROSS é um elemento estruturante de cruz
     structuringElement = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
@@ -73,9 +74,17 @@ def growingSaber(image, imageToCompare, iterations):
     #Dilata a imagem partindo do ponto inicial de surgimento do sabre de luz
     dilatedImage = cv2.dilate(image, structuringElement, iterations = iterations)
     #Faz a interseção com a imagem que tem o conjunto inicial do sabre de luz e o sabre de luz completo
-    dilatedImage = cv2.bitwise_and(dilatedImage, imageToCompare, mask)
+    intersectedImage = cv2.bitwise_and(dilatedImage, imageToCompare, mask)
 
-    return dilatedImage
+    #Checa se a imagem da interseção é igual a imagem que se quer comparar
+    #Pois caso seja quer dizer que não é necessário aumentar a quantidade de dilatações, pois com essa quantidade já é o suficiente
+    #Para preencher a vassoura inteira com a cor do sabre de luz
+    difference = cv2.subtract(imageToCompare, intersectedImage)
+    #verificar se tem algum pixel da imagem que não é 0
+    if np.mean(difference) != 0:
+        iterations += iterationsIncrement
+
+    return intersectedImage, iterations
 
 def searchInitialSaberPoint(image):
     img = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -152,6 +161,7 @@ out = cv2.VideoWriter('outpy.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 30, (
 saveInFiles = False
 count = 0
 
+growingSpeed = 1
 while True:
     ret, frame = video.read()
     if ret:
@@ -163,7 +173,7 @@ while True:
 
         segmentInitialPointWithCompleteSaber = initialPointWithCompleteSaber(segmentInitialPoint, segmentedImage)
 
-        growingSaberImages = growingSaber(segmentInitialPoint, segmentInitialPointWithCompleteSaber, count)
+        growingSaberImages, growingSpeed = growingSaber(segmentInitialPoint, segmentInitialPointWithCompleteSaber, growingSpeed, 2)
 
         imageWithTchikenSaber = thickenSaber(growingSaberImages)
 
